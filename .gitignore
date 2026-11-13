@@ -1,0 +1,6 @@
+.idea/
+.vscode/
+food-delivery-backend/target/
+food-delivery-frontend/node_modules/
+food-delivery-frontend/dist/
+food-delivery-frontend/.npm-cache/
