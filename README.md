@@ -18,12 +18,13 @@ This project is a RESTful API built with Java 21 and Spring Boot 3.3.3 for a foo
 - `food-delivery-backend/docs` — Course deliverables:
   - `SRS.md` — Software Requirements Specification + Mermaid UML diagrams
   - `TestPlan.md` — Test Plan (`TP-G8-FDB-2026-001`)
-  - `TestSpecification.md` — Formal Test Specification (`TS-01`..`TS-09`)
+  - `TestSpecification.md` — Formal Test Specification (`TS-01`..`TS-11`) with evidence boundaries
   - `TestCases.md` — Black-Box System Test Cases
   - `UnitTestCases.md` — Unit Test Case Designs
   - `DefectList.md` — Defect Log
   - `TestReport.md` — Final Test Execution & JaCoCo Coverage Report
   - `MidTermReport.md` — Mid-Term Progress Report
+  - [Document index](./food-delivery-backend/docs/README.md) — Word/PDF editions and the presentation practice guide
 
 ## Installation and Local Setup
 

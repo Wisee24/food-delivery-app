@@ -1,7 +1,8 @@
 # Unit Test Case Design — Food Delivery Backend (Group 8)
 
-Scope: pure unit tests of the domain service layer, application service layer, and JWT helper using JUnit 5 + Mockito.
-Pattern: `@ExtendWith(MockitoExtension.class)`, `@Mock` dependencies, `@InjectMocks` class under test. No Spring context, no database.
+Scope: isolated tests of all four domain service implementations, `DishApplicationServiceImpl`, and `JwtHelper`, using JUnit 5, Mockito and AssertJ as applicable. The other application services are exercised through API integration tests, not separate unit classes.
+Revision: 2026-11-19. UT-01–UT-56 remain unchanged.
+Service-test pattern: `@ExtendWith(MockitoExtension.class)`, mocked collaborators and `@InjectMocks`. Domain tests mock repositories/PasswordEncoder; application tests mock domain services. `JwtHelperTest` constructs the helper directly without Mockito. No unit class starts Spring or a database.
 Location: `src/test/java/mk/ukim/finki/fooddeliverybackend/unit/`
 Run unit tests only: `.\mvnw.cmd test -Dtest="mk.ukim.finki.fooddeliverybackend.unit.*Test"`
 
@@ -9,7 +10,7 @@ Run unit tests only: `.\mvnw.cmd test -Dtest="mk.ukim.finki.fooddeliverybackend.
 
 ## 1. `UserServiceImplTest` (9 tests)
 
-Unit under test: `UserServiceImpl(UserRepository, PasswordEncoder)` — covers `FR-01`..`FR-05`, `NFR-03`.
+Unit under test: `UserServiceImpl(UserRepository, PasswordEncoder)` — exercises registration/login/lookup service logic supporting `FR-01`..`FR-05`, `NFR-03`. Admin-role restrictions and HTTP statuses require the API tests.
 
 | ID | Test method | Objective | Inputs | Expected |
 |----|-------------|-----------|--------|----------|
@@ -108,5 +109,7 @@ Unit under test: `JwtHelper` — covers `NFR-03`.
 ---
 
 **Total unit test cases: 56 (`UT-01` – `UT-56`).**
-- Strict stubbing is enforced by `MockitoExtension`: every stubbed interaction is exercised; negative paths verify `never()` / `verifyNoInteractions`.
+- Mockito service suites use strict stubbing; negative paths check selected interactions with `never()` / `verifyNoInteractions`. `JwtHelperTest` uses no mocked dependencies.
 - Real domain entity constructors (`User`, `Order`, `Dish`, `Restaurant`) are used so entity methods (`Order.confirm()`, `Dish.decreaseQuantity()`, etc.) are exercised directly.
+
+A passing characterization such as UT-30 confirms current defective behavior; it does not satisfy the SRS. Source DTO mapping and line/branch execution also do not imply that every validation rule or response field is explicitly asserted.

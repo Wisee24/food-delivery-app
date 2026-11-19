@@ -7,8 +7,9 @@
 | **Prepared by** | Group 8 |
 | **Application under test** | `food-delivery-backend` (Spring Boot 3.3.3, Java) |
 | **Base package** | `mk.ukim.finki.fooddeliverybackend` |
-| **Document version** | 1.0 |
-| **Status** | Approved for review |
+| **Document version** | 1.1 |
+| **Revision date** | 2026-11-19 |
+| **Status** | Reviewed backend testing baseline; known deviations remain open |
 
 ---
 
@@ -23,12 +24,14 @@ This Software Requirements Specification (SRS) describes the functional and non-
 The product is a REST backend for a food delivery platform. It allows:
 
 - **Customers** to register, log in, browse restaurants and dishes, build a pending order by adding/removing dishes, and confirm or cancel the order.
-- **Restaurant owners** to create, edit, and delete restaurants and their dishes.
+- **Restaurant owners** to create, edit, and delete restaurant and dish records. The model has no owner-to-restaurant association; per-owner isolation is outside this baseline.
 - **Administrators** to manage the platform (an ADMIN account inherits OWNER rights, which in turn inherit CUSTOMER rights).
 
 The backend is implemented with **Spring Boot 3.3.3**, uses an **H2 in-memory database**, and secures endpoints with **JWT authentication** and role-based authorization. Authentication issues JWT tokens; passwords are stored encoded; the `User` entity implements Spring Security's `UserDetails`.
 
-Out of scope: payment processing, courier/delivery tracking, mobile applications, and production-grade persistent storage (the current system uses in-memory H2).
+Out of scope: the companion React frontend, payment processing, courier/delivery tracking, mobile applications, per-owner tenancy, and production-grade persistent storage (the current system uses in-memory H2).
+
+Requirements below state intended behavior. Current implementation deviations are recorded in [DefectList.md](./DefectList.md); passing characterization tests reproduce those deviations rather than establish compliance. [TestReport.md](./TestReport.md) distinguishes automated execution, scenario assessment, source inspection and untested targets.
 
 ### 1.3 Definitions, Acronyms, and Abbreviations
 
@@ -66,31 +69,32 @@ The remainder of this document is organized as follows: Section 2 gives an overa
 
 ### 2.1 Product Perspective
 
-`food-delivery-backend` is a self-contained Spring Boot REST service. It exposes a JSON API for food delivery operations. Data is stored in an H2 in-memory database, seeded at startup with demo data (3 users, 10 restaurants, 20 dishes). Authentication is stateless via JWT; authorization is role-based. The service is designed for development, demonstration, and testing rather than production multi-tenant deployment.
+`food-delivery-backend` is a self-contained Spring Boot REST service. It exposes a JSON API for food delivery operations. Data is stored in an H2 in-memory database, seeded at startup with demo data (3 users, 10 restaurants, 20 dishes) when the `test` profile is inactive. Under `test`, `DataInitializer` is disabled and tests create their own fixtures. Authentication is stateless via JWT; authorization is role-based. The service is designed for development, demonstration, and testing rather than production multi-tenant deployment.
 
 ### 2.2 Product Functions
 
 - **Account management**: register (creates `ROLE_CUSTOMER` user), login (returns JWT), retrieve user by username, retrieve the currently authenticated user.
-- **Restaurant catalog**: list restaurants, view a restaurant with its dishes; owners may add, edit, and delete restaurants.
+- **Restaurant catalog**: list restaurants and view restaurant summary metadata; dishes are retrieved through the separate dish endpoints. Owners may add, edit, and delete restaurant records.
 - **Dish catalog**: list dishes, view a dish and its details; owners may add, edit, and delete dishes.
 - **Ordering**: customers add dishes to a pending order (decrementing stock), remove dishes (incrementing stock), then confirm or cancel the pending order.
 - **Stock enforcement**: a dish with `quantity <= 0` cannot be added to an order.
-- **Demo data seeding**: the database is pre-populated with 3 users (username/password pairs `customer/customer`, `owner/owner`, `admin/admin`), 10 restaurants, and 20 dishes.
+- **Demo data seeding**: outside the `test` profile, the database is pre-populated with 3 users (username/password pairs `customer/customer`, `owner/owner`, `admin/admin`), 10 restaurants, and 20 dishes.
 
 ### 2.3 User Classes and Characteristics
 
 | User class | Role | Privileges |
 |---|---|---|
-| Customer | `ROLE_CUSTOMER` | Register, login, browse restaurants and dishes, manage a pending order, confirm/cancel the order |
+| Guest | None | Register or log in through public account endpoints |
+| Customer | `ROLE_CUSTOMER` | Browse restaurants and dishes, retrieve own profile, manage a pending order, confirm/cancel the order |
 | Restaurant owner | `ROLE_OWNER` | All CUSTOMER rights, plus add/edit/delete restaurants and dishes |
 | Administrator | `ROLE_ADMIN` | All OWNER rights (full platform management) |
 
-Role hierarchy: **ADMIN implies OWNER, OWNER implies CUSTOMER**. Public (unauthenticated) endpoints are limited to registration and login.
+Role hierarchy: **ADMIN implies OWNER, OWNER implies CUSTOMER**. Public business endpoints are registration and login. The development configuration also permits `/swagger-ui/**`, `/v3/api-docs/**` and `/h2/**`; these tooling routes are distinct from protected business operations.
 
 ### 2.4 Constraints
 
-- Runtime: Spring Boot 3.3.3 on the JVM.
-- Persistence: H2 **in-memory** database — all data is lost on restart and re-seeded.
+- Runtime: Spring Boot 3.3.3 with Java 21, the configured compilation and verification target.
+- Persistence: H2 **in-memory** database — state is lost on restart; demo data is re-seeded when the `test` profile is inactive.
 - Security: JWT tokens; passwords stored encoded; endpoints guarded by role checks.
 - API style: REST under `/api/*` with JSON payloads.
 - `User.username` is the primary key; usernames must be unique.
@@ -113,15 +117,15 @@ Priority scale: **High** = core system behavior; **Medium** = important supporti
 - **Priority**: High
 
 ### FR-02 — Duplicate Username Rejection
-- **Description**: Registration with an existing username must fail with `UsernameAlreadyExistsException`; no user is created.
+- **Description**: Registration with an existing username must fail with `UsernameAlreadyExistsException` at the service boundary and HTTP 409 Conflict at the API boundary; no user is created. Current unhandled error mapping is `DEF-02`.
 - **Priority**: High
 
 ### FR-03 — User Login (JWT Issuance)
-- **Description**: `POST /api/user/login` (public) validates credentials and returns a JWT for authenticated requests.
+- **Description**: `POST /api/user/login` (public) validates credentials and returns a JWT for authenticated requests. Unknown usernames must be rejected with HTTP 401 and no token; the current HTTP 403 response is `DEF-09`.
 - **Priority**: High
 
 ### FR-04 — Incorrect Password Handling
-- **Description**: Login with a wrong password must fail with `IncorrectPasswordException`; no token is issued.
+- **Description**: Login with a wrong password must fail with `IncorrectPasswordException` at the service boundary and HTTP 401 at the API boundary; no token is issued. Current unhandled error mapping is `DEF-02`.
 - **Priority**: High
 
 ### FR-05 — Retrieve User by Username
@@ -177,31 +181,34 @@ Priority scale: **High** = core system behavior; **Medium** = important supporti
 - **Priority**: Medium
 
 ### FR-18 — Get or Create Pending Order
-- **Description**: `GET /api/orders/pending` (ROLE_CUSTOMER or higher) returns the user's existing PENDING order, or creates a new empty PENDING order if none exists.
+- **Description**: `GET /api/orders/pending` (ROLE_CUSTOMER or higher) returns the user's existing PENDING order, or creates a new empty PENDING order if none exists. Creation is lazy: login alone does not create an order. A repeated sequential lookup reuses the pending order; concurrency uniqueness has not been verified.
 - **Priority**: High
 
 ### FR-19 — Add Dish to Order
-- **Description**: `POST /api/dishes/{id}/add-to-order` (ROLE_CUSTOMER or higher) adds the dish to the user's pending order and decrements the dish's quantity.
+- **Description**: `POST /api/dishes/{id}/add-to-order` (ROLE_CUSTOMER or higher) adds one unit of an existing dish to the user's pending order and decrements its stock by one. Stock 1 is sufficient: the add succeeds and stock becomes 0. A nonexistent dish must return HTTP 404 (`DEF-02` is the current mapping deviation).
+- **Representation note**: The current order contains a `List<Dish>` with one entry per addition, including repeated dish IDs. A dedicated order-line quantity model is a design improvement under review (`DEF-07`), not a requirement established by this SRS.
 - **Priority**: High
 
 ### FR-20 — Out-of-Stock Rejection
-- **Description**: If the dish quantity is `<= 0`, adding it to an order must fail with `DishOutOfStockException`; the order is not modified.
+- **Description**: If the dish quantity is `<= 0`, adding it to an order must fail with `DishOutOfStockException` and an HTTP 400 response; no dish is added and stock is unchanged. Current unhandled error mapping is `DEF-02`.
 - **Priority**: High
 
 ### FR-21 — Remove Dish from Order
-- **Description**: `POST /api/dishes/{id}/remove-from-order` (ROLE_CUSTOMER or higher) removes the dish from the pending order and increments the dish's quantity (restoring stock).
+- **Description**: `POST /api/dishes/{id}/remove-from-order` (ROLE_CUSTOMER or higher) removes one occurrence of a dish actually present in the pending order and restores one stock unit. If a valid dish is absent from the order, reject the request or leave stock unchanged (`DEF-01` is the current violation). A nonexistent dish must return HTTP 404 (`DEF-02` is the current mapping deviation).
 - **Priority**: High
 
 ### FR-22 — Confirm Order
-- **Description**: `PUT /api/orders/pending/confirm` (ROLE_CUSTOMER or higher) sets the pending order's status to `CONFIRMED`. If the order contains no dishes, it fails with `EmptyOrderException`.
+- **Description**: `PUT /api/orders/pending/confirm` (ROLE_CUSTOMER or higher) sets the pending order's status to `CONFIRMED`. If the order contains no dishes, it fails with `EmptyOrderException` and HTTP 400, leaving it PENDING. If no pending order exists, return HTTP 404. Current empty-order error mapping is `DEF-02`.
 - **Priority**: High
 
 ### FR-23 — Cancel Order
-- **Description**: `PUT /api/orders/pending/cancel` (ROLE_CUSTOMER or higher) sets the pending order's status to `CANCELED`. If the order contains no dishes, it fails with `EmptyOrderException`.
+- **Description**: `PUT /api/orders/pending/cancel` (ROLE_CUSTOMER or higher) sets the pending order's status to `CANCELED`. If the order contains no dishes, it fails with `EmptyOrderException` and HTTP 400, leaving it PENDING. If no pending order exists, return HTTP 404. Current empty-order error mapping is `DEF-02`.
 - **Priority**: High
 
+> Cancellation stock policy: FR-23 specifies the status transition. It does not establish whether whole-order cancellation should restore stock. The current implementation does not restore it; the companion UI promises restoration. Resolve that product decision before adding a stock-restoration acceptance criterion. Existing cancellation tests verify status behavior, not that policy.
+
 ### FR-24 — Demo Data Seeding
-- **Description**: On startup the database is seeded with 3 users (`customer`, `owner`, `admin` — each with password equal to its username), 10 restaurants, and 20 dishes.
+- **Description**: On startup with the `test` profile inactive, the fresh database is seeded with 3 users (`customer`, `owner`, `admin` — each with password equal to its username), 10 restaurants, and 20 dishes.
 - **Priority**: Medium
 
 ---
@@ -210,28 +217,28 @@ Priority scale: **High** = core system behavior; **Medium** = important supporti
 
 ### 4.1 Performance
 - **NFR-01 — Response time**: Typical API responses (list restaurants, list dishes, add dish to order) should return within ~500 ms under normal load in the development/test environment.
-- **NFR-02 — Throughput**: The backend must serve concurrent requests from multiple customers and owners without data corruption, relying on the transactional H2 database.
+- **NFR-02 — Concurrent integrity**: Concurrent customer and owner requests must not corrupt orders or stock. This is a target, not a verified result: the current sequential unit/API tests do not establish concurrency safety, and using H2 or transactions alone is not proof.
 
 ### 4.2 Security
-- **NFR-03 — Authentication**: All protected endpoints require a valid JWT. Passwords are stored encoded (never in plaintext) and are verified against the stored encoded value.
+- **NFR-03 — Authentication**: All protected endpoints require a valid JWT. Missing credentials and invalid/expired/malformed JWTs must return HTTP 401; insufficient roles return HTTP 403. Stored account passwords use BCrypt hashes and are omitted from response DTOs. Published demo credentials are development fixtures. Current missing-credential HTTP 403 behavior is `DEF-09`.
 - **NFR-04 — Authorization**: The role hierarchy is enforced — `ADMIN` implies `OWNER` implies `CUSTOMER`. Endpoints are guarded by role (`hasRole`) so only permitted roles can create/edit/delete restaurants and dishes or manage orders.
-- **NFR-05 — Input validation**: Duplicate usernames and incorrect passwords are rejected with specific exceptions (`UsernameAlreadyExistsException`, `IncorrectPasswordException`) and appropriate HTTP error responses.
+- **NFR-05 — Input validation**: Reject missing username/password, blank restaurant/dish names, non-positive dish prices and negative stock with HTTP 400; zero stock is a valid unavailable dish. Validate email format when supplied. Reject duplicate usernames with HTTP 409 and invalid login credentials with HTTP 401. The current missing validation/error mapping is documented in `DEF-02`, `DEF-09` and `DEF-10`; this requirement is not a claim of implemented validation.
 
 ### 4.3 Reliability & Data Integrity
-- **NFR-06 — Consistent stock handling**: Adding a dish to an order atomically decrements its quantity; removing it increments the quantity. Stock can never go below zero — attempts throw `DishOutOfStockException`.
-- **NFR-07 — Order integrity**: Confirming or canceling an empty order is rejected (`EmptyOrderException`), so a finalized order always contains at least one dish.
+- **NFR-06 — Consistent stock handling**: A successful add decrements stock by one and adds one order entry; removing a present entry restores one unit. Dish and order changes must commit together or roll back together. Removing an absent dish must not inflate stock. An add from stock 0 must fail without reducing stock below zero. These are integrity requirements; current single-operation evidence includes `DEF-01`, and failure rollback/multi-request locking has not been comprehensively verified.
+- **NFR-07 — Order integrity**: Confirming or canceling an empty order is rejected (`EmptyOrderException`), so the supported finalization operation only succeeds when the pending order is non-empty. This does not prove an immutable invariant against later catalog edits or deletion.
 
 ### 4.4 API Usability
 - **NFR-08 — Clear API contract**: REST endpoints follow a consistent `/api/{resource}/...` naming scheme and return meaningful error bodies so front-end clients can handle failures.
-- **NFR-09 — Demo data**: Seeded sample data (3 users, 10 restaurants, 20 dishes) is available immediately after startup to support manual testing and demos.
+- **NFR-09 — Demo data**: With the `test` profile inactive, seeded sample data (3 users, 10 restaurants, 20 dishes) is available after startup for demos. Automated tests disable `DataInitializer` and create isolated fixtures.
 
 ### 4.5 Maintainability & Portability
 - **NFR-10 — Layered architecture**: Code is organized into controller/service/repository layers within `mk.ukim.finki.fooddeliverybackend`, making features independently testable and maintainable.
 - **NFR-11 — Embedded database**: Uses in-memory H2, so the application runs with no external database setup; state resets on restart (suitable for dev/test, not production persistence).
 
 ### 4.6 Compatibility & Deployment Constraints
-- **NFR-12 — Runtime**: Requires a Java version compatible with Spring Boot 3.3.3 and runs as a standard Spring Boot application.
-- **NFR-13 — CORS**: Cross-origin request configuration is defined in the security filter chain; allowed origins are restricted to configured values.
+- **NFR-12 — Runtime**: Build and verify with Java 21, as configured by `pom.xml`, and run as a standard Spring Boot application. Compatibility with other Java versions is not established by this test run.
+- **NFR-13 — CORS**: Browser cross-origin requests are restricted by the security CORS configuration. The current allowed origin is exactly `http://localhost:3000`, hard-coded in `JwtSecurityWebConfig` (`DEF-04`). CORS does not replace authentication or prevent non-browser API clients from connecting. Externalizing the origin is a deployment improvement, not verified configurable behavior.
 
 ---
 
@@ -239,7 +246,7 @@ Priority scale: **High** = core system behavior; **Medium** = important supporti
 
 ### 5.1 Use Case Diagram
 
-> Role inheritance: `ADMIN` implies `OWNER` implies `CUSTOMER`, so an Owner inherits all Customer use cases (`UC1`–`UC8`, `UC11`), and an Admin inherits all Owner use cases plus admin user lookup (`UC12`).
+> Role inheritance: `ADMIN` implies `OWNER` implies `CUSTOMER`. Owners inherit Customer use cases (`UC3`–`UC8`, `UC11`, `UC13`); Admins inherit Owner use cases and add admin user lookup (`UC12`). Registration/login (`UC1`, `UC2`) are public Guest operations. This is a flowchart representation of use cases, not formal UML notation.
 
 ```mermaid
 flowchart LR
@@ -252,7 +259,7 @@ flowchart LR
         UC1["UC1: Register"]
         UC2["UC2: Login"]
         UC3["UC3: Browse Restaurants"]
-        UC4["UC4: View Dish & Details"]
+        UC4["UC4: Browse Dishes & View Details"]
         UC5["UC5: Add Dish to Order"]
         UC6["UC6: Remove Dish from Order"]
         UC7["UC7: Confirm Order"]
@@ -261,6 +268,7 @@ flowchart LR
         UC10["UC10: Manage Dishes (add/edit/delete)"]
         UC11["UC11: View Own Profile (/me)"]
         UC12["UC12: Lookup User by Username"]
+        UC13["UC13: Get or Create Pending Order"]
     end
 
     Unauth --> UC1
@@ -273,6 +281,7 @@ flowchart LR
     Customer --> UC7
     Customer --> UC8
     Customer --> UC11
+    Customer --> UC13
 
     Owner -.->|"inherits"| Customer
     Owner --> UC9
@@ -282,7 +291,26 @@ flowchart LR
     Admin --> UC12
 ```
 
+| Use case | Functional requirements |
+|---|---|
+| UC1 Register | FR-01, FR-02 |
+| UC2 Login | FR-03, FR-04 |
+| UC3 Browse Restaurants | FR-07, FR-08 |
+| UC4 Browse Dishes / Details | FR-12, FR-13, FR-14 |
+| UC5 Add Dish | FR-19, FR-20 |
+| UC6 Remove Dish | FR-21 |
+| UC7 Confirm | FR-22 |
+| UC8 Cancel | FR-23 |
+| UC9 Manage Restaurants | FR-09, FR-10, FR-11 |
+| UC10 Manage Dishes | FR-15, FR-16, FR-17 |
+| UC11 Own Profile | FR-06 |
+| UC12 Admin Lookup | FR-05 |
+| UC13 Pending Order | FR-18 |
+| Background initialization (no actor goal) | FR-24 |
+
 ### 5.2 Domain Class Diagram
+
+The diagram shows intended entity associations, not a guarantee that every database column is non-null. Users/restaurants may have zero orders/dishes; pending orders may be empty. `Role` and `OrderStatus` are enums, not separate persisted tables.
 
 ```mermaid
 classDiagram
@@ -379,8 +407,11 @@ sequenceDiagram
     API->>AS: login(dto)
     AS->>S: login(username,password)
     S->>DB: findByUsername
-    DB-->>S: user
-    alt wrong password
+    DB-->>S: user or absent
+    alt username not found
+        S-->>API: UsernameNotFoundException
+        API-->>C: 401 Unauthorized (intended)
+    else wrong password
         S-->>API: IncorrectPasswordException
         API-->>C: 401 Unauthorized (intended)
     else correct password
@@ -393,6 +424,8 @@ sequenceDiagram
 ```
 
 ### 5.4 Sequence Diagram — Add Dish to Order & Confirm Order
+
+This diagram assumes a valid existing dish and authenticated user. Repository calls are summarized as database interactions; the thin OrderApplicationService delegation is omitted for clarity. Error responses show the intended contract; current unhandled exceptions are `DEF-02`.
 
 ```mermaid
 sequenceDiagram
@@ -410,8 +443,10 @@ sequenceDiagram
     DAS->>DS: findById(dishId)
     DS->>DB: query dish
     DB-->>DS: dish
+    DS-->>DAS: dish
     DAS->>OS: findOrCreatePending(username)
     OS->>DB: query/create PENDING order
+    OS-->>DAS: pending Order
     DAS->>DS: addToOrder(dish, order)
     alt dish quantity <= 0
         DS-->>DC: DishOutOfStockException
@@ -428,8 +463,11 @@ sequenceDiagram
     C->>OC: PUT /api/orders/pending/confirm (JWT)
     OC->>OS: confirm(username)
     OS->>DB: find PENDING order
-    DB-->>OS: order
-    alt order has no dishes
+    DB-->>OS: pending order or absent
+    alt no pending order
+        OS-->>OC: empty Optional
+        OC-->>C: 404 Not Found
+    else order has no dishes
         OS-->>OC: EmptyOrderException
         OC-->>C: 4xx error response (intended)
     else order has dishes
@@ -440,6 +478,8 @@ sequenceDiagram
 ```
 
 ### 5.5 State Diagram — Order Lifecycle
+
+The final node ends this order's lifecycle. A later pending-order lookup/add/remove can create a different pending order; a completed order does not become PENDING again.
 
 ```mermaid
 stateDiagram-v2

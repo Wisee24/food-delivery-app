@@ -1,7 +1,7 @@
 # Test Plan — Food Delivery Backend
 
 **Group 8** — Software Testing Course Project
-Document version: 1.1 | Date: 2026-11-13
+Document version: 1.2 | Date: 2026-11-19
 
 ---
 
@@ -13,7 +13,7 @@ Document version: 1.1 | Date: 2026-11-13
 | Project | Food Delivery Application (Backend) |
 | Repository | `Food-Delivery-App-SpringBoot-master/food-delivery-backend` |
 | Prepared by | Group 8 |
-| Status | Approved and executed |
+| Status | Execution complete for the 111-test automated suite; documented coverage gaps remain |
 
 ## 2. Introduction & Scope
 
@@ -49,17 +49,20 @@ Supporting layers exercised indirectly: repositories (Spring Data JPA) and the H
 **Not to be tested:**
 - Performance, load, and stress characteristics
 - Swagger UI rendering and H2 web console UI
+- Companion frontend UI testing (separate project scope)
+
+FR-24/NFR-09 runtime seed initialization is specified and source-inspected but disabled in the automated `test` profile. No startup acceptance execution or full role/input matrix is claimed. The requirement/evidence boundaries are recorded in [TestSpecification.md](./TestSpecification.md) Section 12 and [TestReport.md](./TestReport.md).
 
 ## 5. Test Approach / Levels
 
 | Level | Technique | Tooling |
 |---|---|---|
-| Unit testing | Isolated domain/application service and JWT helper verification; collaborators mocked | JUnit 5 + Mockito + AssertJ |
-| API Integration / Automation testing | Full Spring Boot context, HTTP endpoints, Spring Security filter chain, JWT auth, and H2 persistence | `@SpringBootTest` + `MockMvc` + Spring Security Test |
+| Unit testing | Four domain services and Dish application-service tested with mocked collaborators; JWT helper tested directly | JUnit 5 + Mockito + AssertJ |
+| API Integration / Automation testing | Spring Boot context, MockMvc request dispatch, security and H2 persistence; selected tests send real JWTs, others use `@WithMockUser` | `@SpringBootTest` + `MockMvc` + Spring Security Test |
 | Black-box design | Equivalence partitioning (EP), boundary value analysis (BVA), and error guessing (EG) applied to REST API inputs | Documented in `TestSpecification.md` and `TestCases.md` |
-| White-box coverage analysis | Statement (instruction) and branch coverage measured automatically across all production packages | JaCoCo Maven Plugin (`0.8.12`) |
+| White-box coverage analysis | Instruction, line and branch coverage measured automatically across production packages; these are separate JaCoCo metrics | JaCoCo Maven Plugin (`0.8.12`) |
 
-Defect management: defects discovered via code inspection or dynamic testing are logged in `DefectList.md` with reproduction steps, severity, and status. Because the System Under Test (`src/main/java`) is an unmodified third-party open-source repository under evaluation, defects are characterized with automated tests rather than patched in production code.
+Defect management: defects discovered via code inspection or dynamic testing are logged in `DefectList.md` with reproduction steps, severity, and status. The third-party System Under Test (`src/main/java`) is kept as the evaluation baseline: this documentation review does not patch application code. Some defects are characterized by automated tests and others are source-inspected; design observations are identified separately. A passing characterization is not an acceptance pass.
 
 ## 6. Test Environment
 
@@ -70,9 +73,9 @@ Defect management: defects discovered via code inspection or dynamic testing are
 | Database | H2 in-memory (`test` profile) |
 | OS | Windows 11 |
 | IDE | IntelliJ IDEA |
-| Frameworks & Plugins | Spring Boot 3.3.3, JUnit 5, Mockito, Spring Security Test, JaCoCo 0.8.12 |
+| Frameworks & Plugins | Spring Boot 3.3.3, JUnit Jupiter 5.9.2, Mockito, AssertJ, Spring Security Test, JaCoCo 0.8.12 |
 
-Execution command (runs all unit + API tests and generates JaCoCo HTML/XML/CSV reports):
+Execution command from `food-delivery-backend` with Java 21 selected (runs all unit + API tests and generates JaCoCo HTML/XML/CSV reports):
 
 ```powershell
 .\mvnw.cmd test
@@ -81,14 +84,14 @@ Execution command (runs all unit + API tests and generates JaCoCo HTML/XML/CSV r
 ## 7. Entry / Exit Criteria
 
 **Entry criteria:**
-- Backend source compiles with `mvnw compile`
-- Test framework and JaCoCo plugin resolved; `mvnw test` executes the harness
+- Backend source compiles with `.\mvnw.cmd compile` on Windows (or `./mvnw compile` on a POSIX shell)
+- Test framework and JaCoCo plugin resolved; the wrapper executes the harness with Java 21
 - SRS (`SRS.md`) and Test Specification (`TestSpecification.md`) baselined
 
 **Exit criteria:**
-- 100% of planned automated unit and API tests executed with zero test failures/errors
-- All Priority-1 (critical workflow) behaviors verified and documented
-- Unit + integration branch coverage on core service packages (`service.domain.impl`, `service.application.impl`) ≥ 80% measured via JaCoCo
+- 100% of the 111 implemented automated unit and API tests executed with zero failures/errors; this does not mean every designed acceptance criterion is automated
+- Planned critical workflow scenarios have documented evidence and acceptance outcomes; gaps and defect-characterization results must be explicit
+- Combined-suite branch coverage on `service.domain.impl` ≥ 80% measured via JaCoCo; `service.application.impl` has no counted JaCoCo branches, so report its instruction/line coverage instead
 - **Release gate:** No open Severity-1/High defects without a documented waiver (if any High defect remains open in an unmodified SUT, the release verdict must be recorded as **Conditional Fail / Not Ready for Production**)
 
 ## 8. Deliverables
@@ -118,7 +121,7 @@ Execution command (runs all unit + API tests and generates JaCoCo HTML/XML/CSV r
 | Risk | Impact | Contingency |
 |---|---|---|
 | Upstream code changes break tests mid-lab | High | Pin to a baseline commit; re-run full suite after any change |
-| Unhandled exceptions in SUT propagate as `ServletException` in MockMvc | Medium | Document as defects (`DEF-02`, `DEF-09`, `DEF-10`) and assert root cause via `assertThrows(ServletException.class, ...)` |
+| Unhandled domain/validation exceptions propagate as `ServletException` in MockMvc | Medium | For DEF-02/DEF-10, assert the root cause. For DEF-09, assert the actual 403 separately; it is handled by Spring Security rather than propagated |
 | H2 in-memory state leaks across API tests | Medium | Clean repositories in `@BeforeEach` in each API test class |
 | Lombok `@Data` recursion on bidirectional JPA entities | Medium | Avoid invoking `toString()`/`hashCode()` on populated `Restaurant`↔`Dish` graphs in tests; log as `DEF-11` |
 | Member unavailability | Medium | Each lab artifact has a designated backup owner |
