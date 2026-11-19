@@ -9,10 +9,6 @@
 
 The combined volume contains Test Plan, Test Specification, Black-Box Test Cases, Unit Test Case Designs, Test Report and Defect List, in that order. It preserves the reviewed source content and case IDs, with the wide case tables presented as individual entries. The SRS keeps the backend baseline separate from its frontend appendix.
 
-## Present in class
-
-[Presentation script and practice guide](./MidTerm_Presentation_Transcript_and_QA.md): reminder card, five-minute script, two-minute fallback, code/test walkthrough, optional live demo, Q&A and setup commands.
-
 ## Markdown sources
 
 - [SRS](./SRS.md)

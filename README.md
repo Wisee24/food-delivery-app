@@ -24,7 +24,7 @@ This project is a RESTful API built with Java 21 and Spring Boot 3.3.3 for a foo
   - `DefectList.md` — Defect Log
   - `TestReport.md` — Final Test Execution & JaCoCo Coverage Report
   - `MidTermReport.md` — Mid-Term Progress Report
-  - [Document index](./food-delivery-backend/docs/README.md) — Word/PDF editions and the presentation practice guide
+  - [Document index](./food-delivery-backend/docs/README.md) — Word/PDF editions of the project documents
 
 ## Installation and Local Setup
 
